@@ -10,9 +10,7 @@ import json
 # General Utilities
 ################################################################################
 
-
-
-def scrollBottomExpandingPage(browser):
+def scrollBottom(browser):
     print 'Starting to scroll'
     oldSource = browser.page_source
     while True:
@@ -39,16 +37,14 @@ def getTopicsFromScrapeage():
 
 # TODO: NBD Combine these 2 functions
 def downloadIndexPage(browser, topic):
-    url = topic + '?share=1' #'https://www.quora.com' + topic + '?share=1'
+    url = topic + '?share=1'
     try:
         browser.get(url)
     except:
         return "<html></html>"
-    scrollBottomExpandingPage(browser)
+    scrollBottom(browser)
     sleep(3)
     html_source = browser.page_source
-    with open('index.html', mode='w') as file:
-        file.write(html_source.encode('utf-8'))
     return html_source
 
 def extractQuestionLinks(html_source, useCached=False):
@@ -58,11 +54,8 @@ def extractQuestionLinks(html_source, useCached=False):
     soup = BeautifulSoup(html_source)
     links = []
     for i in soup.find_all('a', { "class" : "question_link" }):
-        #anchors = i.find_all('a', href=True)
         if len(i) >0 :
             link = i['href']
-        # if len(anchors) > 0:
-        #     link = anchors[0]['href']
             try:
                 links.append(link)
             except UnicodeEncodeError:
@@ -86,7 +79,7 @@ def getAnswerText(answer):
     answer_text = answer.find('div', { "class" : "ExpandedQText ExpandedAnswer" })
     result = answer_text.getText()
     if result:
-        return result#.encode('utf-8')
+        return result
 
 ################################################################################
 # Question Page Main
@@ -98,16 +91,14 @@ def question(browser, question_url):
         return
     url = 'http://www.quora.com' + question_url + '?share=1'
     browser.get(url)
-    scrollBottomExpandingPage(browser)
+    scrollBottom(browser)
     sleep(3)
     html_source = browser.page_source.encode('utf-8')
     
     soup = BeautifulSoup(html_source)
-    question_id = question_url
     question_text = getQuestionText(soup)
     if question_text == None:
         return 0
-    #current_topic = getCurrentTopic(soup)
     topics = getTopics(soup)
     collapsed_answer_pattern = compile('\d+ Answers? Collapsed')
     answers = soup.find_all('div', { "class" : "Answer AnswerBase" })  #class="Answer AnswerBase
@@ -120,12 +111,12 @@ def question(browser, question_url):
         answer= getAnswerText(answer)
         answer_text = answer_text + answer
     try:
-        #First line is answer_id
         dict= {'topics': topics, 'question': question_text, 'answers':answer_text}
 
     except UnicodeDecodeError:
         print 'Unicode decode error'
         return 0
+    #append this dict to previous dict in our answers file
     a = []
     if not os.path.isfile('answers.csv'):
         a.append(dict)
@@ -147,18 +138,16 @@ def main(argv):
     os.environ["webdriver.chrome.driver"] = chromedriver
     start = time()
     option = argv
+
     if option == 'getquestionlinks':
         browser = webdriver.Chrome(chromedriver)
         topic_urls = getTopicsFromScrapeage()
-        print topic_urls
         for topic_url in topic_urls:
             html_source = downloadIndexPage(browser, topic_url)
             links = extractQuestionLinks(html_source, False)
-            print len(links)
             with open('questions.txt', mode='a') as file:
                 file.write('\n'.join(links).encode('utf-8'))
-            # with open('questions_' + str(topic_url), mode='a'):
-            #     file.write('\n'.join(links).encode('utf-8'))
+
     elif option == 'downloadquestions':
         browser = webdriver.Chrome(chromedriver)
         links = []
@@ -183,15 +172,9 @@ def main(argv):
                     try:
                         file.write((link + '\n').encode('utf-8'))
                     except (UnicodeDecodeError, UnicodeEncodeError):
-                        print 'Character encodings suck and fail'
+                        print 'An encoding problem occured'
     end = time()
     print 'Script runtime: ', end - start
 
 if __name__ == "__main__":
     main(argv= "getquestionlinks")
-
-
-        # answer_id = question_id + '-' + user_id
-        #date = getDate(answer)
-        #number_of_upvotes = getNumberOfUpvotes(answer)
-        #upvoters = getUpvoters(answer)
