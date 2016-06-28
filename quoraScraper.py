@@ -6,8 +6,13 @@ from sys import argv
 from random import choice
 import os
 import json
+################################################################################
+# General Utilities
+################################################################################
 
-def scrollPage(browser):
+
+
+def scrollBottomExpandingPage(browser):
     print 'Starting to scroll'
     oldSource = browser.page_source
     while True:
@@ -19,8 +24,11 @@ def scrollPage(browser):
             break
         oldSource = newSource
     print 'Done scrolling'
+################################################################################
+# Index Page Main
+################################################################################
 
-def getTopics():
+def getTopicsFromScrapeage():
     fr = open('topic_urls.txt', mode='r')
     lines = fr.read().split('\n')
     topic_urls = []
@@ -29,16 +37,18 @@ def getTopics():
         topic_urls.append(x[len(x)-1])
     return topic_urls
 
-
-def getHTMLSrc(browser, topic):
+# TODO: NBD Combine these 2 functions
+def downloadIndexPage(browser, topic):
     url = topic + '?share=1' #'https://www.quora.com' + topic + '?share=1'
     try:
         browser.get(url)
     except:
         return "<html></html>"
-    scrollPage(browser)
+    scrollBottomExpandingPage(browser)
     sleep(3)
     html_source = browser.page_source
+    with open('index.html', mode='w') as file:
+        file.write(html_source.encode('utf-8'))
     return html_source
 
 def extractQuestionLinks(html_source, useCached=False):
@@ -51,11 +61,14 @@ def extractQuestionLinks(html_source, useCached=False):
         #anchors = i.find_all('a', href=True)
         if len(i) >0 :
             link = i['href']
+        # if len(anchors) > 0:
+        #     link = anchors[0]['href']
             try:
                 links.append(link)
             except UnicodeEncodeError:
                 pass
     return links
+
 
 def getQuestionText(soup):
     try:
@@ -68,23 +81,26 @@ def getTopics(soup):
     topics = soup.find_all('div', { "class" : "QuestionTopicListItem TopicListItem topic_pill" })
     return ', '.join(topic.getText() for topic in topics)
 
+
 def getAnswerText(answer):
-    answer_text = answer.find('div', { "class" : "ExpandedQText ExpandedAnswer" }) # _all
+    answer_text = answer.find('div', { "class" : "ExpandedQText ExpandedAnswer" })
     result = answer_text.getText()
     if result:
-        return result
+        return result#.encode('utf-8')
 
+################################################################################
+# Question Page Main
+################################################################################
 
 def question(browser, question_url):
     if not match('/', question_url):
-        print 'Local urls should start with /:', question_url
+        print 'Bad question url:', question_url
         return
     url = 'http://www.quora.com' + question_url + '?share=1'
     browser.get(url)
-    scrollPage(browser)
+    scrollBottomExpandingPage(browser)
     sleep(3)
     html_source = browser.page_source.encode('utf-8')
-
     
     soup = BeautifulSoup(html_source)
     question_id = question_url
@@ -100,32 +116,31 @@ def question(browser, question_url):
     for answer in answers:
         result = collapsed_answer_pattern.match(answer.getText())
         if result or 'add_answer_wrapper' in answer['class']:
-            print("skipped ***")
             continue # skip collapsed answers and answer text box
         answer= getAnswerText(answer)
         answer_text = answer_text + answer
     try:
         #First line is answer_id
         dict= {'topics': topics, 'question': question_text, 'answers':answer_text}
-        # out_string =  '{{{' + topics + '}}}' + ', ' \
-        #               + '{{{' + question_text + '}}}' + ', ' \
-        #               + '{{{' + answer_text + '}}}' + '\n'
 
     except UnicodeDecodeError:
         print 'Unicode decode error'
         return 0
     a = []
-    if not os.path.isfile('/Users/ana/Desktop/All data/UCLA/Q3rd/cho/project/crawler/answers.csv'):
+    if not os.path.isfile('answers.csv'):
         a.append(dict)
-        with open ('/Users/ana/Desktop/All data/UCLA/Q3rd/cho/project/crawler/answers.csv', 'w')as f:
+        with open ('answers.csv', 'w')as f:
             f.write(json.dumps(a,indent=2))
     else:
-        with open ('/Users/ana/Desktop/All data/UCLA/Q3rd/cho/project/crawler/answers.csv') as file:
+        with open ('answers.csv') as file:
             feeds = json.load(file)
         feeds.append(dict)
-        with open('/Users/ana/Desktop/All data/UCLA/Q3rd/cho/project/crawler/answers.csv', mode= 'w') as f:
+        with open('answers.csv', mode= 'w') as f:
             f.write(json.dumps(feeds,indent=2))
 
+################################################################################
+# Main
+################################################################################
 
 def main(argv):
     chromedriver = "/anaconda/bin/chromedriver"
@@ -134,16 +149,16 @@ def main(argv):
     option = argv
     if option == 'getquestionlinks':
         browser = webdriver.Chrome(chromedriver)
-        topic_urls = getTopics()
+        topic_urls = getTopicsFromScrapeage()
         print topic_urls
         for topic_url in topic_urls:
-            html_source = getHTMLSrc(browser, topic_url)
+            html_source = downloadIndexPage(browser, topic_url)
             links = extractQuestionLinks(html_source, False)
             print len(links)
             with open('questions.txt', mode='a') as file:
                 file.write('\n'.join(links).encode('utf-8'))
-            with open('questions_' + str(topic_url), mode='a'):
-                file.write('\n'.join(links).encode('utf-8'))
+            # with open('questions_' + str(topic_url), mode='a'):
+            #     file.write('\n'.join(links).encode('utf-8'))
     elif option == 'downloadquestions':
         browser = webdriver.Chrome(chromedriver)
         links = []
@@ -173,7 +188,7 @@ def main(argv):
     print 'Script runtime: ', end - start
 
 if __name__ == "__main__":
-    main(argv="downloadquestions")
+    main(argv= "getquestionlinks")
 
 
         # answer_id = question_id + '-' + user_id
